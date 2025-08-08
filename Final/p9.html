@@ -1,0 +1,1000 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Color Thief — Guards Upgraded</title>
+<style>
+  :root{
+    --bg:#05040a;
+    --glass: rgba(255,255,255,0.03);
+    --accent1: #00f6ff;
+    --accent2: #ff3b7a;
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+  }
+  html,body{ height:100%; margin:0; background: radial-gradient(circle at 10% 10%, #071026 0%, var(--bg) 45%, #000 100%); color:#fff; overflow:hidden; }
+  canvas{ display:block; width:100vw; height:100vh; }
+
+  /* HUD */
+  #hud { position:absolute; top:14px; left:50%; transform:translateX(-50%); display:flex; gap:10px; z-index:40; pointer-events:none; }
+  .stat { pointer-events:auto; background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.03)); border-radius:10px; padding:8px 10px; font-weight:700; font-size:13px; color:#e6f7ff; box-shadow: 0 6px 18px rgba(0,0,0,0.45); }
+
+  /* Overlays */
+  .overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:45; background: rgba(0,0,0,0.28); }
+  .card { min-width:300px; max-width:720px; margin:18px; background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.06)); border-radius:12px; padding:20px; text-align:center; color:#f5fbff; backdrop-filter: blur(6px); box-shadow: 0 18px 60px rgba(0,0,0,0.6); }
+  h1{ margin:0 0 8px; font-size:30px; letter-spacing:1px; }
+  p.sub{ margin:8px 0 12px; opacity:0.95; }
+
+  .btn{ display:inline-block; padding:10px 14px; margin:6px; border-radius:10px; background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); color:#fff; cursor:pointer; border:1px solid rgba(255,255,255,0.04); font-weight:800; }
+  .btn.primary{ background: linear-gradient(90deg, rgba(0,246,255,0.09), rgba(255,59,122,0.09)); box-shadow: 0 10px 30px rgba(0,246,255,0.06); }
+
+  #controls { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); display:flex; gap:10px; z-index:40; }
+  .micro{ font-size:13px; padding:8px 10px; border-radius:10px; background:var(--glass); border:1px solid rgba(255,255,255,0.03); cursor:pointer; }
+
+  #touchControls { position:absolute; right:14px; bottom:14px; display:none; gap:8px; z-index:41; } /* hidden by default */
+  .touchBtn { width:48px; height:48px; border-radius:10px; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.04); font-weight:700; }
+
+  @media (max-width:720px){ #touchControls{ display:flex; flex-direction:row; } h1{ font-size:24px; } .card{ padding:14px; } }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div class="stat" id="levelUI">Level: 1</div>
+  <div class="stat" id="timerUI">Time: 0</div>
+  <div class="stat" id="colorsUI">Colors: 0/0</div>
+  <div class="stat" id="scoreUI">Score: 0</div>
+</div>
+
+<!-- Start Overlay -->
+<div class="overlay" id="menuOverlay">
+  <div class="card">
+    <h1>COLOR THIEF — GUARDS UPGRADED</h1>
+    <p class="sub">Collect neon colors, avoid the guards. Guards now have animated visuals (no external images). Use Arrow keys / WASD. Press <strong>P</strong> to Pause.</p>
+    <div>
+      <button class="btn primary" id="startBtn">Start From Level 1</button>
+      <button class="btn" id="continueBtn">Continue</button>
+      <button class="btn" id="selectBtn">Select Level</button>
+      <button class="btn" id="resetBtn" style="background:transparent; border-color:rgba(255,0,0,0.22)">Reset Progress</button>
+    </div>
+    <p style="margin-top:10px; opacity:0.8; font-size:13px">Unlocked Level: <span id="unlockedDisplay">1</span> — High Score: <span id="hiScore">0</span></p>
+  </div>
+</div>
+
+<!-- Level Select Overlay -->
+<div class="overlay" id="selectOverlay" style="display:none; align-items:flex-start; padding-top:64px;">
+  <div class="card">
+    <h2 style="margin-top:0">Select Level</h2>
+    <p class="sub">Choose any level up to your unlocked level.</p>
+    <div id="levelButtons" style="display:flex; flex-wrap:wrap; justify-content:center; gap:8px;"></div>
+    <div style="margin-top:10px;">
+      <button class="btn" id="selectBack">Back</button>
+    </div>
+  </div>
+</div>
+
+<!-- Info Overlay -->
+<div class="overlay" id="infoOverlay" style="display:none; align-items:flex-start; padding-top:64px;">
+  <div class="card">
+    <h2 style="margin-top:0">How to Play</h2>
+    <p class="sub">Move to collect colored orbs. Your orb takes the last color you collected. Guards chase and can steal your last color. Some orbs spawn power-ups (Speed, Shield). Score increases when you collect colors and finish levels quickly. Clear all required colors before the timer runs out.</p>
+    <div>
+      <button class="btn primary" id="startFromInfo">Start Game</button>
+      <button class="btn" id="backToMenu">Back</button>
+    </div>
+  </div>
+</div>
+
+<!-- Level Complete -->
+<div class="overlay" id="levelCompleteOverlay" style="display:none;">
+  <div class="card">
+    <h1 id="lcTitle">Level Complete</h1>
+    <p id="lcText" class="sub">Great job — proceed to next level!</p>
+    <div>
+      <button class="btn primary" id="nextLevelBtn">Next Level</button>
+      <button class="btn" id="replayBtn">Replay Level</button>
+      <button class="btn" id="menuBtn">Main Menu</button>
+    </div>
+  </div>
+</div>
+
+<!-- End Overlay -->
+<div class="overlay" id="endOverlay" style="display:none;">
+  <div class="card">
+    <h1 id="endTitle">You Win!</h1>
+    <p id="endText" class="sub">Amazing — you completed the final level.</p>
+    <div>
+      <button class="btn primary" id="playAgainBtn">Play Again</button>
+      <button class="btn" id="endMenuBtn">Main Menu</button>
+    </div>
+    <p style="margin-top:10px; font-size:13px; opacity:0.85">Final Score: <span id="finalScore">0</span></p>
+  </div>
+</div>
+
+<div id="controls">
+  <button class="micro" id="restartBtn">Restart</button>
+  <button class="micro" id="muteBtn">Mute</button>
+</div>
+
+<!-- optional simple touch controls for mobile -->
+<div id="touchControls">
+  <div class="touchBtn" id="tUp">↑</div>
+  <div class="touchBtn" id="tLeft">←</div>
+  <div class="touchBtn" id="tRight">→</div>
+  <div class="touchBtn" id="tDown">↓</div>
+</div>
+
+<script>
+(() => {
+  // --- Canvas & Context
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha: true });
+  let W = canvas.width = innerWidth;
+  let H = canvas.height = innerHeight;
+
+  // --- DOM nodes
+  const levelUI = document.getElementById('levelUI');
+  const timerUI = document.getElementById('timerUI');
+  const colorsUI = document.getElementById('colorsUI');
+  const scoreUI = document.getElementById('scoreUI');
+  const unlockedDisplay = document.getElementById('unlockedDisplay');
+  const hiScoreEl = document.getElementById('hiScore');
+  const startOverlay = document.getElementById('menuOverlay');
+  const selectOverlay = document.getElementById('selectOverlay');
+  const infoOverlay = document.getElementById('infoOverlay');
+  const levelCompleteOverlay = document.getElementById('levelCompleteOverlay');
+  const endOverlay = document.getElementById('endOverlay');
+  const startBtn = document.getElementById('startBtn');
+  const continueBtn = document.getElementById('continueBtn');
+  const selectBtn = document.getElementById('selectBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const backToMenu = document.getElementById('backToMenu');
+  const startFromInfo = document.getElementById('startFromInfo');
+  const nextLevelBtn = document.getElementById('nextLevelBtn');
+  const replayBtn = document.getElementById('replayBtn');
+  const menuBtn = document.getElementById('menuBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const muteBtn = document.getElementById('muteBtn');
+  const playAgainBtn = document.getElementById('playAgainBtn');
+  const endMenuBtn = document.getElementById('endMenuBtn');
+  const finalScoreEl = document.getElementById('finalScore');
+  const levelButtonsContainer = document.getElementById('levelButtons');
+
+  // --- Storage keys & initial load
+  const STORAGE_PROGRESS = 'ct_progress_v1';
+  const STORAGE_HS = 'ct_highscore_v1';
+
+  // --- Game constants & state
+  const LEVELS = [
+    { id:1, target:5, time:22, orbs:5, guards:2, guardSpeed:1.4, theme: {bgAccent:'rgba(0,246,255,0.06)', accent:'#00f6ff'}, guardPalette: ['#6ad4ff','#00aacc'] },
+    { id:2, target:6, time:20, orbs:6, guards:3, guardSpeed:1.7, theme: {bgAccent:'rgba(255,59,122,0.06)', accent:'#ff3b7a'}, guardPalette: ['#ffb1c2','#ff6b88'] },
+    { id:3, target:7, time:18, orbs:7, guards:3, guardSpeed:2.0, theme: {bgAccent:'rgba(0,200,180,0.06)', accent:'#00c7be'}, guardPalette: ['#9ef0e6','#00c7be'] },
+    { id:4, target:8, time:16, orbs:8, guards:4, guardSpeed:2.25, theme: {bgAccent:'rgba(255,204,0,0.06)', accent:'#ffd60a'}, guardPalette: ['#ffe08a','#ffcf3d'] },
+    { id:5, target:10, time:14, orbs:10, guards:5, guardSpeed:2.6, theme: {bgAccent:'rgba(150,90,255,0.06)', accent:'#af52de'}, guardPalette: ['#caa8ff','#8e63ff'] }
+  ];
+
+  // persisted state
+  let unlockedLevel = (function(){
+    try {
+      const fromStorage = localStorage.getItem(STORAGE_PROGRESS);
+      if(!fromStorage) return 1;
+      const obj = JSON.parse(fromStorage);
+      if(!obj || typeof obj.unlocked !== 'number') return 1;
+      return Math.max(1, Math.min(obj.unlocked, LEVELS.length));
+    } catch(e) { return 1; }
+  })();
+
+  let highScore = parseInt(localStorage.getItem(STORAGE_HS) || '0', 10);
+  hiScoreEl.textContent = highScore;
+  unlockedDisplay.textContent = unlockedLevel;
+
+  // state
+  let currentLevelIndex = 0;
+  let running = false;
+  let paused = false;
+  let gameStartTime = 0;
+  let accumulatedPause = 0;
+  let pauseStartedAt = 0;
+  let score = 0;
+  let audioEnabled = true;
+
+  // player
+  const player = {
+    x: W/2, y: H/2,
+    baseSize: 18,
+    size: 18,
+    speed: 4.6,
+    vx:0, vy:0,
+    color: 'rgba(255,255,255,0.95)',
+    trail: [],
+    shieldedUntil: 0,
+    speedUntil: 0
+  };
+
+  // objects
+  let orbs = [];
+  let guards = [];
+  let particlePool = [];
+  let powerups = [];
+  let collectedColors = [];
+
+  // Input
+  const keys = {};
+  addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    keys[k] = true;
+    if (k === 'p') togglePause();
+  });
+  addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+  ['tUp','tDown','tLeft','tRight'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('touchstart', e => { e.preventDefault(); if(id==='tUp') keys['arrowup']=true; if(id==='tDown') keys['arrowdown']=true; if(id==='tLeft') keys['arrowleft']=true; if(id==='tRight') keys['arrowright']=true; });
+    el.addEventListener('touchend', e => { e.preventDefault(); if(id==='tUp') keys['arrowup']=false; if(id==='tDown') keys['arrowdown']=false; if(id==='tLeft') keys['arrowleft']=false; if(id==='tRight') keys['arrowright']=false; });
+  });
+
+  // Resize
+  window.addEventListener('resize', () => {
+    W = canvas.width = innerWidth;
+    H = canvas.height = innerHeight;
+  });
+
+  // Utilities
+  const rand = (a,b) => Math.random()*(b-a)+a;
+  const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+  const sq = v => v*v;
+
+  // --- Audio helpers
+  let audioCtx = null;
+  function ensureAudio(){
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext||window.webkitAudioContext)(); } catch(e){}
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function playBeep(freq=440, dur=0.06, gain=0.06){
+    if(!audioEnabled) return;
+    try{
+      ensureAudio();
+      if(!audioCtx) return;
+      const o=audioCtx.createOscillator();
+      const g=audioCtx.createGain();
+      o.type='sine'; o.frequency.value = freq;
+      g.gain.value = gain;
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start();
+      o.stop(audioCtx.currentTime + dur);
+    } catch(e){}
+  }
+
+  // --- Particle pool
+  function initParticlePool(n=280){
+    particlePool = [];
+    for(let i=0;i<n;i++){
+      particlePool.push({alive:false,x:0,y:0,vx:0,vy:0,born:0,life:0,size:0,color:'#fff'});
+    }
+  }
+  function spawnParticles(x,y,color,count=20,spread=1){
+    const now = performance.now();
+    for(let i=0;i<count;i++){
+      const p = particlePool.find(p => !p.alive);
+      if(!p) break;
+      const ang = rand(0,Math.PI*2);
+      const sp = rand(0.8,5.2) * spread;
+      p.alive = true;
+      p.x = x; p.y = y;
+      p.vx = Math.cos(ang)*sp;
+      p.vy = Math.sin(ang)*sp - rand(0,1.2);
+      p.life = rand(420,920);
+      p.born = now;
+      p.size = rand(1.2,3.6);
+      p.color = color;
+    }
+    playBeep(780, 0.05, 0.03);
+  }
+  function updateParticles(now, dt){
+    for(const p of particlePool){
+      if(!p.alive) continue;
+      const age = now - p.born;
+      if(age > p.life){ p.alive = false; continue; }
+      p.vy += 0.04 * dt/16;
+      p.x += p.vx * dt/16;
+      p.y += p.vy * dt/16;
+    }
+  }
+  function drawParticles(now){
+    for(const p of particlePool){
+      if(!p.alive) continue;
+      const lifeRatio = 1 - ((now - p.born) / p.life);
+      drawCircle(p.x, p.y, p.size * Math.max(0,lifeRatio), p.color, Math.max(0,lifeRatio));
+    }
+  }
+
+  // --- Draw helpers
+  function colorToRgba(hex, a=1){
+    if(!hex) return `rgba(255,255,255,${a})`;
+    if(hex.startsWith('rgba')||hex.startsWith('rgb')) return hex;
+    const h = hex.replace('#','');
+    const bigint = parseInt(h,16);
+    const r=(bigint>>16)&255, g=(bigint>>8)&255, b=bigint&255;
+    return `rgba(${r},${g},${b},${a})`;
+  }
+  function drawGlow(x,y,r,color,alpha=1){
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createRadialGradient(x,y,0,x,y,r);
+    g.addColorStop(0, colorToRgba(color,alpha));
+    g.addColorStop(0.35, colorToRgba(color,alpha*0.45));
+    g.addColorStop(1, colorToRgba('#000',0));
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+  function drawCircle(x,y,r,color,alpha=1){
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x,y,r,0,Math.PI*2);
+    ctx.fillStyle = colorToRgba(color, alpha);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // --- Spawning functions
+  function spawnOrbs(level){
+    orbs = [];
+    const margin = 90;
+    const palette = [
+      "#FF3B30","#007AFF","#34C759","#FFCC00","#AF52DE","#FF6B00","#00C7BE","#5E5CE6","#FF3B7A","#FFD60A"
+    ];
+    const count = level.orbs;
+    for(let i=0;i<count;i++){
+      let tries=0, o=null;
+      while(!o && tries<300){
+        const x = rand(margin, W-margin);
+        const y = rand(margin, H-margin);
+        const tooClose = orbs.some(p=> (p.x-x)*(p.x-x)+(p.y-y)*(p.y-y) < 80*80 ) || ((player) && (player.x-x)*(player.x-x)+(player.y-y)*(player.y-y) < 140*140);
+        if(!tooClose) o = {
+          id: 'orb_'+i+'_'+Date.now(),
+          x,y,
+          vx: rand(-1.1,1.1), vy: rand(-1.1,1.1),
+          baseSize: 14, pulse: rand(0,Math.PI*2),
+          color: palette[i % palette.length],
+          collected:false,
+          givesPower: Math.random() < 0.12
+        };
+        tries++;
+      }
+      if(o) orbs.push(o);
+    }
+  }
+
+  function spawnGuards(n, baseSpeed, levelIndex){
+    guards = [];
+    const palette = LEVELS[levelIndex].guardPalette || ['#aaa','#777'];
+    for(let i=0;i<n;i++){
+      const bodyColor = palette[i % palette.length];
+      const accent = LEVELS[levelIndex].theme.accent;
+      guards.push({
+        x: rand(60, W-60), y: rand(60, H-60),
+        vx:0, vy:0,
+        size: 20,
+        speed: baseSpeed * rand(0.9,1.15),
+        lastHitAt: -999999,
+        dashUntil:0,
+        dashCooldown: rand(1200, 2600),
+        lastDashAt: performance.now() - rand(0,2000),
+        predictFactor: rand(0.08, 0.22),
+        type: Math.random()<0.28 ? 'dasher' : 'pursuer',
+        bodyColor,
+        accent,
+        blinkUntil: performance.now() + rand(3000,6000),
+        blinkDuration: rand(80,160),
+        legPhase: rand(0, Math.PI*2),
+        bobPhase: rand(0, Math.PI*2),
+        facing: Math.random() < 0.5 ? -1 : 1,
+        patrolPauseUntil: 0,
+        patrolPauseDuration: 0
+      });
+    }
+  }
+
+  function spawnPowerupNear(x,y){
+    const type = Math.random() < 0.5 ? 'speed' : 'shield';
+    powerups.push({x:x + rand(-28,28), y:y + rand(-28,28), type, spawnedAt:performance.now(), ttl:8000});
+  }
+
+  // --- Level / player control
+  function resetPlayer(){
+    player.x = W/2; player.y = H/2; player.vx=0; player.vy=0; player.trail = [];
+    player.color = 'rgba(255,255,255,0.95)';
+    player.size = player.baseSize;
+    player.shieldedUntil = 0;
+    player.speedUntil = 0;
+  }
+
+  function startLevelByIndex(index){
+    currentLevelIndex = Math.max(0, Math.min(index, LEVELS.length-1));
+    startLevel(currentLevelIndex);
+  }
+
+  function startLevel(index){
+    currentLevelIndex = index;
+    const lvl = LEVELS[index];
+    collectedColors = [];
+    powerups = [];
+    score = 0;
+    resetPlayer();
+    spawnOrbs(lvl);
+    spawnGuards(lvl.guards, lvl.guardSpeed, index);
+    running = true;
+    paused = false;
+    accumulatedPause = 0;
+    gameStartTime = performance.now();
+    levelUI.textContent = `Level: ${lvl.id}`;
+    colorsUI.textContent = `Colors: ${collectedColors.length}/${lvl.target}`;
+    timerUI.textContent = `Time: ${lvl.time}`;
+    scoreUI.textContent = `Score: ${score}`;
+    startOverlay.style.display = 'none';
+    selectOverlay.style.display = 'none';
+    infoOverlay.style.display = 'none';
+    levelCompleteOverlay.style.display = 'none';
+    endOverlay.style.display = 'none';
+    playBeepStart();
+  }
+
+  function nextLevel(){
+    if(currentLevelIndex < LEVELS.length-1){
+      startLevel(currentLevelIndex + 1);
+    } else {
+      gameWin();
+    }
+  }
+
+  function gameWin(){
+    running = false;
+    endOverlay.style.display = 'flex';
+    document.getElementById('endTitle').textContent = 'You Win!';
+    document.getElementById('endText').textContent = 'Amazing — you completed all levels!';
+    finalScoreEl.textContent = Math.floor(score);
+    saveUnlockedAfterCompletion(currentLevelIndex);
+    saveHighScore();
+    playBeepWin();
+  }
+
+  function gameOver(){
+    running = false;
+    endOverlay.style.display = 'flex';
+    document.getElementById('endTitle').textContent = 'Game Over';
+    document.getElementById('endText').textContent = 'Time ran out. Try again!';
+    finalScoreEl.textContent = Math.floor(score);
+    saveHighScore();
+    playBeepLose();
+  }
+
+  // When a level is completed, update unlocked level and persist
+  function saveUnlockedAfterCompletion(completedLevelIndex){
+    const completedId = LEVELS[completedLevelIndex].id;
+    const newUnlocked = Math.min(LEVELS.length, completedId + 1);
+    if(newUnlocked > unlockedLevel){
+      try {
+        const obj = { unlocked: newUnlocked };
+        localStorage.setItem(STORAGE_PROGRESS, JSON.stringify(obj));
+        unlockedLevel = newUnlocked;
+        unlockedDisplay.textContent = unlockedLevel;
+      } catch(e){}
+    } else {
+      unlockedDisplay.textContent = unlockedLevel;
+    }
+  }
+
+  function saveHighScore(){
+    if(score > highScore){
+      highScore = Math.floor(score);
+      try { localStorage.setItem(STORAGE_HS, String(highScore)); } catch(e){}
+      hiScoreEl.textContent = highScore;
+    }
+  }
+
+  // --- Sound cues
+  function playBeepStart(){ playBeep(520, 0.08, 0.06); playBeep(760, 0.06, 0.04); }
+  function playBeepWin(){ playBeep(880, 0.12, 0.09); playBeep(1040, 0.08, 0.06); }
+  function playBeepLose(){ playBeep(220, 0.15, 0.08); }
+
+  // --- Pause toggle
+  function togglePause(){
+    if(!running) return;
+    paused = !paused;
+    if(paused){ pauseStartedAt = performance.now(); }
+    else { accumulatedPause += performance.now() - pauseStartedAt; }
+  }
+
+  // --- Guard visual renderer (procedural "sprite")
+  function drawGuard(g, now){
+    // shadow
+    const shadowY = g.y + g.size*0.9;
+    ctx.save();
+    ctx.globalAlpha = 0.16;
+    const shadowW = g.size * 1.6;
+    ctx.beginPath();
+    ctx.ellipse(g.x, shadowY, shadowW, shadowW*0.45, 0, 0, Math.PI*2);
+    ctx.fillStyle = '#000';
+    ctx.fill();
+    ctx.restore();
+
+    // bobbing
+    g.bobPhase += 0.02;
+    const bob = Math.sin(g.bobPhase) * 2.2;
+
+    // body base
+    const bodyW = g.size * 1.2;
+    const bodyH = g.size * 1.35;
+    const bodyX = g.x;
+    const bodyY = g.y + bob;
+
+    // legs animation
+    g.legPhase += 0.12;
+    const legOffset = Math.sin(g.legPhase) * (g.dashUntil > now ? 6 : 3);
+
+    // facing flip
+    const flip = g.facing < 0 ? -1 : 1;
+    ctx.save();
+    ctx.translate(bodyX, bodyY);
+    ctx.scale(flip, 1);
+
+    // lower body (pants)
+    ctx.beginPath();
+    roundRect(ctx, -bodyW*0.5, -bodyH*0.12, bodyW, bodyH*0.68, 6);
+    ctx.fillStyle = g.bodyColor;
+    ctx.fill();
+
+    // legs (two rounded rectangles)
+    ctx.beginPath();
+    const legW = bodyW*0.28;
+    const legH = bodyH*0.36;
+    // left leg
+    ctx.save();
+    ctx.translate(-bodyW*0.18, bodyH*0.34 + (legOffset*0.1));
+    ctx.rotate(Math.sin(g.legPhase)*0.06);
+    roundRect(ctx, -legW*0.5, -legH*0.5, legW, legH, 4);
+    ctx.fillStyle = darken(g.bodyColor, -18);
+    ctx.fill();
+    ctx.restore();
+    // right leg
+    ctx.beginPath();
+    ctx.save();
+    ctx.translate(bodyW*0.18, bodyH*0.34 - (legOffset*0.1));
+    ctx.rotate(Math.sin(g.legPhase + Math.PI)*0.06);
+    roundRect(ctx, -legW*0.5, -legH*0.5, legW, legH, 4);
+    ctx.fillStyle = darken(g.bodyColor, -18);
+    ctx.fill();
+    ctx.restore();
+
+    // torso overlay (chest accent)
+    ctx.beginPath();
+    roundRect(ctx, -bodyW*0.36, -bodyH*0.28, bodyW*0.72, bodyH*0.36, 5);
+    ctx.fillStyle = colorToRgba(g.accent, 0.08);
+    ctx.fill();
+
+    // helmet / head
+    const headR = g.size*0.46;
+    ctx.beginPath();
+    ctx.arc(0, -bodyH*0.36, headR, Math.PI*0.18, Math.PI*0.82, false);
+    ctx.lineTo(headR*0.94, -bodyH*0.12);
+    ctx.arc(0, -bodyH*0.12, headR*0.94, Math.PI*0, Math.PI*1, true);
+    ctx.fillStyle = darken(g.bodyColor, 6);
+    ctx.fill();
+
+    // visor area (eyes)
+    const eyeY = -bodyH*0.32;
+    const eyeX = headR*0.26;
+    // blinking
+    const isBlink = now > g.blinkUntil && now < (g.blinkUntil + g.blinkDuration);
+    if(now > g.blinkUntil + g.blinkDuration + rand(2000,5000)){
+      // schedule next blink
+      g.blinkUntil = now + rand(2000,5000);
+      g.blinkDuration = rand(80,160);
+    }
+
+    // eye pupils track player
+    const px = player.x, py = player.y;
+    const dx = px - g.x, dy = py - g.y;
+    const dd = Math.hypot(dx,dy) || 1;
+    const pupilOffset = Math.min(3.6, 8 * (1/(dd/24 + 0.1)));
+    const pupilX = (dx/dd) * pupilOffset;
+    const pupilY = (dy/dd) * pupilOffset * 0.6;
+
+    // draw eye shapes
+    ctx.beginPath();
+    if(isBlink){
+      // draw a thin line
+      ctx.fillStyle = '#111';
+      ctx.fillRect(-headR*0.44, eyeY-2, headR*0.88, 4);
+    } else {
+      // white eye base
+      ctx.fillStyle = '#fff';
+      // left eye
+      roundRect(ctx, -eyeX - 8, eyeY - 8, 16, 16, 6);
+      // right eye
+      roundRect(ctx, eyeX - 8, eyeY - 8, 16, 16, 6);
+      ctx.fill();
+      // pupils
+      ctx.beginPath();
+      ctx.arc(-eyeX + pupilX, eyeY + pupilY, 4, 0, Math.PI*2);
+      ctx.arc(eyeX + pupilX, eyeY + pupilY, 4, 0, Math.PI*2);
+      ctx.fillStyle = '#111';
+      ctx.fill();
+    }
+
+    // small antenna/accent
+    ctx.beginPath();
+    ctx.moveTo(0, -bodyH*0.7);
+    ctx.lineTo(0, -bodyH*0.92);
+    ctx.strokeStyle = g.accent;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function darken(hex, percent) {
+    // percent negative to darken, positive to lighten
+    if(!hex || hex[0] !== '#') return hex;
+    const h = hex.replace('#','');
+    const bigint = parseInt(h,16);
+    let r=(bigint>>16)&255, g=(bigint>>8)&255, b=bigint&255;
+    r = clamp(Math.round(r + (percent/100)*255), 0, 255);
+    g = clamp(Math.round(g + (percent/100)*255), 0, 255);
+    b = clamp(Math.round(b + (percent/100)*255), 0, 255);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  // --- Main update loop
+  let lastFrame = performance.now();
+  initParticlePool(280);
+
+  function update(){
+    const now = performance.now();
+    const dt = Math.min(40, now - lastFrame);
+    lastFrame = now;
+
+    ctx.clearRect(0,0,W,H);
+    drawNeonGrid(now);
+
+    if(running && !paused){
+      const lvl = LEVELS[currentLevelIndex];
+      const elapsed = (now - gameStartTime - accumulatedPause)/1000;
+      const remaining = Math.max(0, Math.ceil(lvl.time - elapsed));
+      timerUI.textContent = `Time: ${remaining}`;
+
+      if(remaining <= 0){
+        gameOver();
+      }
+
+      // Movement
+      let moveX = 0, moveY = 0;
+      if(keys['arrowup'] || keys['w']) moveY -= 1;
+      if(keys['arrowdown'] || keys['s']) moveY += 1;
+      if(keys['arrowleft'] || keys['a']) moveX -= 1;
+      if(keys['arrowright'] || keys['d']) moveX += 1;
+
+      const nowMS = performance.now();
+      const effectiveSpeed = (nowMS < player.speedUntil) ? player.speed * 1.9 : player.speed;
+      if(moveX !== 0 || moveY !== 0){
+        const mag = Math.hypot(moveX, moveY) || 1;
+        player.vx = (moveX/mag) * effectiveSpeed * (dt/16);
+        player.vy = (moveY/mag) * effectiveSpeed * (dt/16);
+        player.x += player.vx;
+        player.y += player.vy;
+      } else {
+        player.vx *= 0.88;
+        player.vy *= 0.88;
+        player.x += player.vx;
+        player.y += player.vy;
+      }
+      player.x = clamp(player.x, 12, W-12);
+      player.y = clamp(player.y, 12, H-12);
+
+      // trail
+      player.trail.push({x:player.x, y:player.y, color:player.color, t:now});
+      if(player.trail.length > 28) player.trail.shift();
+
+      // Orbs
+      orbs.forEach(o => {
+        if(o.collected) return;
+        o.x += o.vx * (dt/16);
+        o.y += o.vy * (dt/16);
+        o.pulse += 0.06 * (dt/16);
+        if(o.x < 28 || o.x > W-28) o.vx *= -1;
+        if(o.y < 28 || o.y > H-28) o.vy *= -1;
+      });
+
+      // Guards AI & movement
+      guards.forEach(g => {
+        const dx = player.x - g.x;
+        const dy = player.y - g.y;
+        const d = Math.hypot(dx,dy) || 1;
+
+        // small patrol pause logic: random pause occasionally
+        if(now > g.patrolPauseUntil && Math.random() < 0.0008 * (dt/16)){
+          g.patrolPauseDuration = 300 + rand(200, 1200);
+          g.patrolPauseUntil = now + g.patrolPauseDuration;
+        }
+
+        // prediction target
+        let targetX = player.x;
+        let targetY = player.y;
+        const pred = g.predictFactor * 12;
+        targetX += player.vx * pred;
+        targetY += player.vy * pred;
+
+        // dashers have a dash window
+        if(g.type === 'dasher'){
+          if(now - g.lastDashAt > g.dashCooldown && Math.random() < 0.002 * (dt/16)){
+            g.dashUntil = now + 320 + rand(0,240);
+            g.lastDashAt = now;
+            g.dashCooldown = 1200 + rand(0,2600);
+          }
+        }
+
+        const isPaused = now < g.patrolPauseUntil;
+        const speed = (g.dashUntil > now ? g.speed * 2.2 : g.speed) * (isPaused ? 0.08 : 1);
+
+        // steering
+        g.vx += (targetX - g.x) * 0.006 * (dt/16);
+        g.vy += (targetY - g.y) * 0.006 * (dt/16);
+        g.vx *= 0.92; g.vy *= 0.92;
+        const mag = Math.hypot(g.vx, g.vy) || 1;
+        g.x += (g.vx/mag) * speed * (dt/16);
+        g.y += (g.vy/mag) * speed * (dt/16);
+
+        // facing is direction of velocity
+        if(Math.abs(g.vx) > 0.4) g.facing = g.vx < 0 ? -1 : 1;
+
+        g.x = clamp(g.x, 18, W-18);
+        g.y = clamp(g.y, 18, H-18);
+      });
+
+      // Orb collisions
+      for(const o of orbs){
+        if(o.collected) continue;
+        const rSum = (player.size + (o.baseSize + Math.sin(o.pulse)*2.2));
+        if(sq(player.x - o.x) + sq(player.y - o.y) < rSum*rSum){
+          o.collected = true;
+          collectedColors.push(o.color);
+          player.color = o.color;
+          spawnParticles(o.x, o.y, o.color, 28, 1);
+          if(o.givesPower && Math.random() < 0.9) spawnPowerupNear(o.x, o.y);
+          score += 150;
+          score += Math.round((LEVELS[currentLevelIndex].time - ((now-gameStartTime-accumulatedPause)/1000))*6);
+          colorsUI.textContent = `Colors: ${collectedColors.length}/${LEVELS[currentLevelIndex].target}`;
+          scoreUI.textContent = `Score: ${Math.floor(score)}`;
+          playBeep(820, 0.06, 0.06);
+          if(collectedColors.length >= LEVELS[currentLevelIndex].target){
+            running = false;
+            levelCompleteOverlay.style.display = 'flex';
+            document.getElementById('lcTitle').textContent = `Level ${LEVELS[currentLevelIndex].id} Complete`;
+            document.getElementById('lcText').textContent = `Nice — ${collectedColors.length} colors collected!`;
+            const timeLeft = Math.max(0, Math.ceil(LEVELS[currentLevelIndex].time - ((now-gameStartTime-accumulatedPause)/1000)));
+            const bonus = timeLeft * 40;
+            score += bonus;
+            scoreUI.textContent = `Score: ${Math.floor(score)}`;
+            playBeepWin();
+            saveUnlockedAfterCompletion(currentLevelIndex);
+          }
+        }
+      }
+
+      // Guard collisions
+      guards.forEach(g=>{
+        const r = g.size + player.size;
+        if(sq(g.x - player.x) + sq(g.y - player.y) < r*r){
+          if(now - g.lastHitAt > 900){
+            g.lastHitAt = now;
+            if(collectedColors.length > 0){
+              if(now < player.shieldedUntil){
+                player.shieldedUntil = 0;
+                spawnParticles(player.x + rand(-10,10), player.y + rand(-10,10), '#fff', 12, 1.2);
+                playBeep(760, 0.06, 0.03);
+              } else {
+                collectedColors.pop();
+                player.color = collectedColors.length ? collectedColors[collectedColors.length-1] : 'rgba(255,255,255,0.95)';
+                spawnParticles(player.x + rand(-10,10), player.y + rand(-10,10), '#fff', 12, 1);
+                playBeep(220, 0.05, 0.03);
+                score = Math.max(0, score - 60);
+                scoreUI.textContent = `Score: ${Math.floor(score)}`;
+                colorsUI.textContent = `Colors: ${collectedColors.length}/${LEVELS[currentLevelIndex].target}`;
+              }
+            } else {
+              playBeep(140, 0.03, 0.02);
+            }
+          }
+        }
+      });
+
+      // Powerups
+      powerups = powerups.filter(p => (now - p.spawnedAt) < p.ttl);
+      for(const pu of powerups){
+        const r = 12 + player.size;
+        if(sq(player.x - pu.x) + sq(player.y - pu.y) < r*r){
+          if(pu.type === 'speed') player.speedUntil = performance.now() + 5200;
+          else player.shieldedUntil = performance.now() + 5200;
+          score += (pu.type === 'speed' ? 60 : 80);
+          spawnParticles(pu.x, pu.y, pu.type === 'speed' ? '#fff' : '#ffd60a', 14, 1.2);
+          playBeep(960, 0.06, 0.06);
+          pu.spawnedAt = -999999;
+        }
+      }
+      powerups = powerups.filter(p=>p.spawnedAt>0);
+
+      updateParticles(now, dt);
+    } // end running
+
+    // Render: orbs
+    orbs.forEach(o=>{
+      const size = o.baseSize + Math.sin(o.pulse || 0) * 2.2;
+      if(o.collected){
+        drawGlow(o.x, o.y, size*1.6, '#222', 0.08);
+        drawCircle(o.x, o.y, size*0.52, '#333', 0.12);
+      } else {
+        drawGlow(o.x, o.y, size*2.2, o.color, 0.14);
+        drawGlow(o.x, o.y, size, o.color, 0.96);
+      }
+    });
+
+    // powerups
+    powerups.forEach(p=>{
+      drawGlow(p.x, p.y, 18, p.type==='speed' ? '#fff' : '#ffd60a', 0.14);
+      drawCircle(p.x, p.y, 8, p.type==='speed' ? '#fff' : '#ffd60a', 1);
+      ctx.save();
+      ctx.fillStyle = '#000'; ctx.globalAlpha = 0.08;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 8,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    });
+
+    // particles
+    drawParticles(now);
+
+    // guards (draw after orbs for layering)
+    guards.forEach(g=>{
+      drawGuard(g, now);
+    });
+
+    // player trail
+    for(let i=0;i<player.trail.length;i++){
+      const t = player.trail[i];
+      const alpha = (i / player.trail.length) * 0.7;
+      drawGlow(t.x, t.y, player.size * (i/6 + 0.8), t.color, alpha*0.9);
+    }
+
+    // player
+    drawGlow(player.x, player.y, player.size*2.6, player.color, 0.18);
+    drawGlow(player.x, player.y, player.size, player.color, 0.98);
+    ctx.beginPath(); ctx.arc(player.x, player.y, player.size*0.6, 0, Math.PI*2); ctx.fillStyle = '#fff'; ctx.globalAlpha = 0.12; ctx.fill(); ctx.globalAlpha = 1;
+    if(performance.now() < player.shieldedUntil){
+      ctx.beginPath(); ctx.arc(player.x, player.y, player.size*1.6, 0, Math.PI*2);
+      ctx.strokeStyle = 'rgba(255,216,32,0.9)'; ctx.lineWidth = 2; ctx.stroke();
+    }
+
+    requestAnimationFrame(update);
+  }
+
+  // neon grid bg
+  let gridOffset = 0;
+  function drawNeonGrid(now){
+    gridOffset += 0.42;
+    const spacing = 62;
+    const vign = ctx.createRadialGradient(W*0.5, H*0.5, Math.min(W,H)/6, W*0.5, H*0.5, Math.max(W,H));
+    vign.addColorStop(0, 'rgba(255,255,255,0.02)');
+    vign.addColorStop(1, 'rgba(0,0,0,0.6)');
+    ctx.fillStyle = vign;
+    ctx.fillRect(0,0,W,H);
+
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+    ctx.beginPath();
+    for(let x=-spacing + (gridOffset%spacing); x<W+spacing; x+=spacing){
+      ctx.moveTo(x,0); ctx.lineTo(x,H);
+    }
+    for(let y=-spacing + (gridOffset%spacing); y<H+spacing; y+=spacing){
+      ctx.moveTo(0,y); ctx.lineTo(W,y);
+    }
+    ctx.stroke();
+
+    const lvl = LEVELS[currentLevelIndex] || LEVELS[0];
+    ctx.lineWidth = 1.4;
+    for (let x = -spacing*3 + (gridOffset*0.7 % (spacing*3)); x < W + spacing*3; x += spacing*3) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, H);
+      ctx.strokeStyle = lvl.theme.bgAccent;
+      ctx.stroke();
+    }
+    for (let y = -spacing*3 + (gridOffset*0.7 % (spacing*3)); y < H + spacing*3; y += spacing*3) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.strokeStyle = lvl.theme.bgAccent;
+      ctx.stroke();
+    }
+  }
+
+  // --- UI handlers
+  startBtn.addEventListener('click', ()=>{
+    ensureAudio();
+    startLevelByIndex(0);
+  });
+  continueBtn.addEventListener('click', ()=>{
+    ensureAudio();
+    const idx = Math.max(0, Math.min(unlockedLevel - 1, LEVELS.length - 1));
+    startLevelByIndex(idx);
+  });
+  selectBtn.addEventListener('click', ()=>{
+    levelButtonsContainer.innerHTML = '';
+    for(let i=0;i<LEVELS.length;i++){
+      const btn = document.createElement('button');
+      btn.className = 'btn';
+      btn.style.minWidth = '96px';
+      btn.textContent = `Level ${LEVELS[i].id}`;
+      if(i <= unlockedLevel - 1){
+        btn.addEventListener('click', ()=>{ startLevelByIndex(i); });
+      } else {
+        btn.disabled = true;
+        btn.style.opacity = 0.45;
+      }
+      levelButtonsContainer.appendChild(btn);
+    }
+    startOverlay.style.display='none';
+    selectOverlay.style.display='flex';
+  });
+  resetBtn.addEventListener('click', ()=>{
+    if(confirm('Reset saved progress? This will unlock only Level 1 again.')) {
+      try {
+        localStorage.removeItem(STORAGE_PROGRESS);
+        unlockedLevel = 1;
+        unlockedDisplay.textContent = unlockedLevel;
+        alert('Progress reset. You are now unlocked to Level 1.');
+      } catch(e){}
+    }
+  });
+
+  backToMenu.addEventListener('click', ()=>{ infoOverlay.style.display='none'; startOverlay.style.display='flex'; });
+  startFromInfo.addEventListener('click', ()=>{ ensureAudio(); startLevelByIndex(0); });
+  nextLevelBtn.addEventListener('click', ()=>{ levelCompleteOverlay.style.display='none'; nextLevel(); });
+  replayBtn.addEventListener('click', ()=>{ levelCompleteOverlay.style.display='none'; startLevelByIndex(currentLevelIndex); });
+  menuBtn.addEventListener('click', ()=>{ levelCompleteOverlay.style.display='none'; startOverlay.style.display='flex'; });
+  restartBtn.addEventListener('click', ()=>{ if(running) startLevelByIndex(currentLevelIndex); else startLevelByIndex(0); });
+  muteBtn.addEventListener('click', ()=>{ audioEnabled = !audioEnabled; muteBtn.textContent = audioEnabled ? 'Mute' : 'Unmute'; });
+  playAgainBtn.addEventListener('click', ()=>{ startLevelByIndex(0); endOverlay.style.display='none'; });
+  endMenuBtn.addEventListener('click', ()=>{ endOverlay.style.display='none'; startOverlay.style.display='flex'; });
+
+  // init
+  function initPreview(){
+    spawnOrbs(LEVELS[0]);
+    spawnGuards(LEVELS[0].guards, LEVELS[0].guardSpeed, 0);
+    levelUI.textContent = `Level: ${LEVELS[0].id}`;
+    colorsUI.textContent = `Colors: 0/${LEVELS[0].target}`;
+    timerUI.textContent = `Time: ${LEVELS[0].time}`;
+    scoreUI.textContent = `Score: 0`;
+  }
+
+  initPreview();
+  requestAnimationFrame(update);
+
+  // expose for debug
+  window.ColorThief = { startLevelByIndex, resetProgress: ()=>{ localStorage.removeItem(STORAGE_PROGRESS); unlockedLevel=1; unlockedDisplay.textContent=1; }, getUnlocked: ()=>unlockedLevel };
+
+})();
+</script>
+</body>
+</html>
